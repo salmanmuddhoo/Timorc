@@ -253,7 +253,9 @@
   .report .rkpi .label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
   .report .rkpi .value { font-size: 21px; font-weight: 650; }
   .report .rkpi .sub { font-size: 11.5px; color: var(--text-muted); }
-  .report .swatch, .report .catdot { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .report .swatch, .report .catdot, .report .hbar-seg { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+  .report .team-subs .hbar-row { grid-template-columns: minmax(220px, 340px) 1fr; }
+  .report .team-subs .name { white-space: normal; line-height: 1.25; }
 
   /* ---------- print: only the report ---------- */
   @media print {
@@ -344,7 +346,7 @@
       </div>
       <div class="card">
         <h3>Non-productif par intervenant, détaillé par sous-tâche</h3>
-        <p class="desc">Qui passe du temps sur quoi — d'après le commentaire des saisies MAURITIUS9.</p>
+        <p class="desc">Qui passe du temps sur quelles sous-tâches MAURITIUS9 — survolez une barre pour voir la tâche et les commentaires.</p>
         <div id="chartNpByPerson"></div>
       </div>
     </div>
@@ -363,8 +365,8 @@
     </div>
 
     <div class="card">
-      <h3>Évolution journalière</h3>
-      <p class="desc">Total des jours saisis par jour, par catégorie.</p>
+      <h3>Évolution du temps saisi</h3>
+      <p class="desc" id="descDaily">Total des jours saisis par jour, par catégorie.</p>
       <div class="legend" id="legDaily"></div>
       <div class="linechart-wrap" id="chartDaily"></div>
     </div>
@@ -454,7 +456,7 @@ function parseCsv(text, sep) {
         if (text[i + 1] === '"') { field += '"'; i++; }
         else inQ = false;
       } else field += ch;
-    } else if (ch === '"') inQ = true;
+    } else if (ch === '"' && field === "") inQ = true; // un guillemet en milieu de champ est littéral (exports Timorc non cités)
     else if (ch === sep) { row.push(field); field = ""; }
     else if (ch === "\n" || ch === "\r") {
       if (ch === "\r" && text[i + 1] === "\n") i++;
@@ -478,6 +480,8 @@ function parseNum(s) {
   if (!s) return NaN;
   return parseFloat(s.replace(/\s/g, "").replace(",", "."));
 }
+const projCode = (projet) => projet.split(" - ")[0].trim() || projet;
+const npTaskLabel = (r) => projCode(r.projet) + " > " + r.tache;
 function classify(projet) {
   const p = projet.toUpperCase();
   if (p.startsWith("MAURITIUS9")) return "np";
@@ -497,6 +501,7 @@ function loadFile(file) {
     const iProjet = findCol((h) => h.startsWith("projet"));
     const iInterv = findCol((h) => h.startsWith("intervenant"));
     const iTache  = findCol((h) => h.startsWith("tache") || h === "tâche");
+    const iSousT  = findCol((h) => h.startsWith("sous-tache") || h.startsWith("sous tache"));
     const iJour   = findCol((h) => h === "jour");
     const iTemps  = findCol((h) => h.startsWith("temps passe") && !h.includes("cumul"));
     const iPresta = findCol((h) => h.startsWith("prestation"));
@@ -520,6 +525,7 @@ function loadFile(file) {
       const tache = (iTache >= 0 ? c[iTache] || "" : "").trim() || "(sans tâche)";
       parsed.push({
         projet, intervenant, tache, date, temps,
+        sousTache: (iSousT >= 0 ? c[iSousT] || "" : "").trim(),
         prestation: (iPresta >= 0 ? c[iPresta] || "" : "").trim(),
         presence: iPres >= 0 ? parseNum(c[iPres]) : NaN,
         commentaire: (iComm >= 0 ? c[iComm] || "" : "").trim(),
@@ -685,26 +691,59 @@ function renderStackedBars(container, items, unitFmt) {
   }
 }
 
-/* NP breakdown per person by sub-task (the free-text "Commentaire" of MAURITIUS9 entries) */
+/* NP breakdown by sub-task ("Sous-tâche" column; fallback: the entry's Commentaire) */
+function npSubLabel(r) { return r.sousTache || r.commentaire || "(sans détail)"; }
+function groupSubs(data) {
+  const subs = new Map();
+  for (const r of data) {
+    const label = npSubLabel(r);
+    const key = normalize(label);
+    if (!subs.has(key)) subs.set(key, { label, value: 0, taches: new Set(), comments: new Set() });
+    const s = subs.get(key);
+    s.value += r.temps;
+    s.taches.add(npTaskLabel(r));
+    if (r.commentaire) s.comments.add(r.commentaire);
+  }
+  return [...subs.values()].sort((a, b) => b.value - a.value);
+}
 function groupNpSubtasks(npData) {
   const persons = new Map();
   for (const r of npData) {
-    if (!persons.has(r.intervenant)) persons.set(r.intervenant, { total: 0, subs: new Map() });
+    if (!persons.has(r.intervenant)) persons.set(r.intervenant, { total: 0, rows: [] });
     const p = persons.get(r.intervenant);
     p.total += r.temps;
-    const label = r.commentaire || "(sans détail)";
-    const key = normalize(label);
-    if (!p.subs.has(key)) p.subs.set(key, { label, value: 0, taches: new Set() });
-    const s = p.subs.get(key);
-    s.value += r.temps;
-    s.taches.add(r.tache);
+    p.rows.push(r);
   }
   return [...persons.entries()]
-    .map(([name, p]) => ({
-      name, total: p.total,
-      subs: [...p.subs.values()].sort((a, b) => b.value - a.value),
-    }))
+    .map(([name, p]) => ({ name, total: p.total, subs: groupSubs(p.rows) }))
     .sort((a, b) => b.total - a.total);
+}
+function subTooltip(t, s, ownerLabel, color) {
+  t.appendChild(el("div", { class: "tt-title" }, s.label));
+  t.appendChild(ttRow(color, ownerLabel, fmtJ(s.value)));
+  t.appendChild(el("div", { style: { opacity: .75, marginTop: "3px" } }, "Tâche : " + [...s.taches].join(", ")));
+  const comments = [...s.comments];
+  if (comments.length) {
+    const shown = comments.slice(0, 6);
+    const box = el("div", { style: { opacity: .85, marginTop: "3px" } }, "Commentaires :");
+    for (const c of shown) box.appendChild(el("div", {}, "• " + c));
+    if (comments.length > shown.length) box.appendChild(el("div", {}, `… +${comments.length - shown.length} autres`));
+    t.appendChild(box);
+  }
+}
+function subBarRow(container, s, w, color, ownerLabel) {
+  const seg = el("div", {
+    class: "hbar-seg endcap", tabindex: "0",
+    style: { width: w + "%", background: color, flex: "none" },
+  });
+  const tt = (e) => showTooltip(e, (t) => subTooltip(t, s, ownerLabel, color));
+  seg.addEventListener("pointermove", tt);
+  seg.addEventListener("pointerleave", hideTooltip);
+  seg.addEventListener("focus", () => tt({ clientX: seg.getBoundingClientRect().right, clientY: seg.getBoundingClientRect().top }));
+  seg.addEventListener("blur", hideTooltip);
+  container.appendChild(el("div", { class: "hbar-row" },
+    el("div", { class: "name", title: s.label }, s.label),
+    el("div", { class: "hbar-track" }, seg, el("span", { class: "hbar-val" }, fmtJ(s.value)))));
 }
 function renderNpSubtasks(container, npData, color) {
   container.textContent = "";
@@ -718,23 +757,18 @@ function renderNpSubtasks(container, npData, color) {
       el("span", { class: "tot" }, fmtJ(p.total))));
     for (const s of p.subs) {
       const w = maxSub > 0 ? Math.max(s.value / maxSub * 84, 0.5) : 0;
-      const seg = el("div", {
-        class: "hbar-seg endcap", tabindex: "0",
-        style: { width: w + "%", background: color, flex: "none" },
-      });
-      const tt = (e) => showTooltip(e, (t) => {
-        t.appendChild(el("div", { class: "tt-title" }, s.label));
-        t.appendChild(ttRow(color, p.name, fmtJ(s.value)));
-        t.appendChild(el("div", { style: { opacity: .75, marginTop: "3px" } }, "Tâche : " + [...s.taches].join(", ")));
-      });
-      seg.addEventListener("pointermove", tt);
-      seg.addEventListener("pointerleave", hideTooltip);
-      seg.addEventListener("focus", () => tt({ clientX: seg.getBoundingClientRect().right, clientY: seg.getBoundingClientRect().top }));
-      seg.addEventListener("blur", hideTooltip);
-      container.appendChild(el("div", { class: "hbar-row" },
-        el("div", { class: "name", title: s.label }, s.label),
-        el("div", { class: "hbar-track" }, seg, el("span", { class: "hbar-val" }, fmtJ(s.value)))));
+      subBarRow(container, s, w, color, p.name);
     }
+  }
+}
+function renderTeamSubtasks(container, npData, color) {
+  container.textContent = "";
+  const subs = groupSubs(npData);
+  if (!subs.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
+  const maxSub = subs[0].value;
+  for (const s of subs) {
+    const w = maxSub > 0 ? Math.max(s.value / maxSub * 70, 0.5) : 0;
+    subBarRow(container, s, w, color, "Équipe");
   }
 }
 
@@ -746,10 +780,10 @@ function renderLegend(container, entries) {
 }
 
 /* Daily multi-series line chart with crosshair tooltip. series: [{key,label,color, byDay:Map}] */
-function renderDaily(container, days, series) {
+function renderDaily(container, days, series, labels) {
   container.textContent = "";
   if (!days.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
-  const W = 1080, H = 260, mL = 44, mR = 16, mT = 12, mB = 34;
+  const W = 1080, H = 260, mL = 44, mR = 40, mT = 12, mB = 34;
   const iw = W - mL - mR, ih = H - mT - mB;
   const maxY = Math.max(0.001, ...series.flatMap((s) => days.map((d) => s.byDay.get(d) || 0)));
   const niceMax = niceCeil(maxY);
@@ -768,9 +802,8 @@ function renderDaily(container, days, series) {
   const step = Math.max(1, Math.ceil(days.length / 12));
   days.forEach((d, i) => {
     if (i % step !== 0 && i !== days.length - 1) return;
-    const dd = new Date(d);
     svg.appendChild(el("text", { x: x(i), y: H - 10, "text-anchor": "middle", "font-size": 11, fill: cssColor("--text-muted") },
-      dd.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })));
+      labels.axis(d)));
   });
   // series lines + end markers
   for (const s of series) {
@@ -791,9 +824,8 @@ function renderDaily(container, days, series) {
     const cx = x(idx);
     cross.setAttribute("x1", cx); cross.setAttribute("x2", cx);
     cross.setAttribute("visibility", "visible");
-    const dd = new Date(days[idx]);
     showTooltip(e, (t) => {
-      t.appendChild(el("div", { class: "tt-title" }, fmtDate(dd)));
+      t.appendChild(el("div", { class: "tt-title" }, labels.title(days[idx])));
       let tot = 0;
       for (const s of series) {
         const v = s.byDay.get(days[idx]) || 0; tot += v;
@@ -889,7 +921,7 @@ function render() {
 
   /* ---- NP tasks ---- */
   const npData = data.filter((r) => r.cat === "np");
-  const npTaskTotals = [...sumBy(npData, (r) => r.tache, (r) => r.temps).entries()]
+  const npTaskTotals = [...sumBy(npData, npTaskLabel, (r) => r.temps).entries()]
     .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   renderBars($("#chartNpTasks"), npTaskTotals, catColor.np, fmtJ, "Non-productif");
 
@@ -910,14 +942,25 @@ function render() {
     .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   renderBars($("#chartConges"), congeItems, catColor.conge, fmtJ, "Congés");
 
-  /* ---- daily ---- */
+  /* ---- évolution (jour, ou mois si la période est longue) ---- */
   renderLegend($("#legDaily"), CAT_ORDER.map((c) => ({ label: CAT[c].label, color: catColor[c] })));
   const dayKeys = uniqueSorted(data.map((r) => dateKey(r.date)));
+  const monthly = dayKeys.length > 45;
+  const bucket = monthly ? (r) => dateKey(r.date).slice(0, 7) : (r) => dateKey(r.date);
+  const keys = monthly ? uniqueSorted(dayKeys.map((k) => k.slice(0, 7))) : dayKeys;
+  $("#descDaily").textContent = monthly
+    ? "Total des jours saisis par mois, par catégorie (agrégation mensuelle : période de plus de 45 jours)."
+    : "Total des jours saisis par jour, par catégorie.";
   const series = CAT_ORDER.map((c) => ({
     key: c, label: CAT[c].label, color: catColor[c],
-    byDay: sumBy(data.filter((r) => r.cat === c), (r) => dateKey(r.date), (r) => r.temps),
+    byDay: sumBy(data.filter((r) => r.cat === c), bucket, (r) => r.temps),
   }));
-  renderDaily($("#chartDaily"), dayKeys, series);
+  const monthLabel = (k, long) => new Date(k + "-01T00:00:00Z")
+    .toLocaleDateString("fr-FR", long ? { month: "long", year: "numeric" } : { month: "short", year: "2-digit" });
+  renderDaily($("#chartDaily"), keys, series, {
+    axis: monthly ? (k) => monthLabel(k, false) : (k) => new Date(k).toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+    title: monthly ? (k) => monthLabel(k, true) : (k) => fmtDate(new Date(k)),
+  });
 
   /* ---- table ---- */
   renderTable(data);
@@ -1002,7 +1045,7 @@ function renderReport(data, totals, catColor) {
 
   /* non-productif par tâche */
   const npData = data.filter((r) => r.cat === "np");
-  const npTasks = [...sumBy(npData, (r) => r.tache, (r) => r.temps).entries()]
+  const npTasks = [...sumBy(npData, npTaskLabel, (r) => r.temps).entries()]
     .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   body.appendChild(el("section", { class: "rsec" },
     el("h3", {}, "Tâches non-productives (MAURITIUS9) — total équipe"),
@@ -1011,17 +1054,12 @@ function renderReport(data, totals, catColor) {
       npTasks.map((t) => [t.name, fmt(t.value), pct(t.value, totals.np)]),
       ["Total", fmt(totals.np), ""]) : el("p", { class: "rmeta" }, "Aucune donnée.")));
 
-  /* non-productif par intervenant et sous-tâche */
-  const npDetail = [];
-  for (const p of groupNpSubtasks(npData)) {
-    for (const s of p.subs) npDetail.push([p.name, s.label, [...s.taches].join(", "), fmt(s.value)]);
-  }
+  /* sous-tâches non-productives — équipe entière */
+  const teamChart = el("div", { class: "team-subs" });
+  renderTeamSubtasks(teamChart, npData, catColor.np);
   body.appendChild(el("section", { class: "rsec" },
-    el("h3", {}, "Non-productif par intervenant, détaillé par sous-tâche"),
-    npDetail.length ? rTable(
-      [{ label: "Intervenant" }, { label: "Sous-tâche (commentaire)" }, { label: "Tâche" }, { label: "Temps (j)", num: true }],
-      npDetail,
-      ["Total", "", "", fmt(totals.np)]) : el("p", { class: "rmeta" }, "Aucune donnée.")));
+    el("h3", {}, "Sous-tâches non-productives — équipe entière"),
+    teamChart));
 
   /* congés */
   const conges = [...sumBy(data.filter((r) => r.cat === "conge"), (r) => r.intervenant, (r) => r.temps).entries()]
@@ -1049,8 +1087,8 @@ let tableRowsCache = [];
 function renderTable(data) {
   const agg = new Map();
   for (const r of data) {
-    const key = r.intervenant + " " + r.projet + " " + r.tache;
-    if (!agg.has(key)) agg.set(key, { intervenant: r.intervenant, projet: r.projet, tache: r.tache, cat: r.cat, temps: 0, jours: new Set() });
+    const key = [r.intervenant, r.projet, r.tache, r.sousTache].join("\u0000");
+    if (!agg.has(key)) agg.set(key, { intervenant: r.intervenant, projet: r.projet, tache: r.tache, sousTache: r.sousTache, cat: r.cat, temps: 0, jours: new Set() });
     const a = agg.get(key);
     a.temps += r.temps;
     a.jours.add(dateKey(r.date));
@@ -1061,7 +1099,7 @@ function renderTable(data) {
 function drawTable() {
   const q = normalize($("#tblSearch").value || "");
   let list = tableRowsCache.filter((r) =>
-    !q || normalize(r.intervenant).includes(q) || normalize(r.projet).includes(q) || normalize(r.tache).includes(q));
+    !q || normalize(r.intervenant).includes(q) || normalize(r.projet).includes(q) || normalize(r.tache).includes(q) || normalize(r.sousTache).includes(q));
   const { key, dir } = sortState;
   list.sort((a, b) => {
     const va = a[key], vb = b[key];
@@ -1074,6 +1112,7 @@ function drawTable() {
     { key: "intervenant", label: "Intervenant" },
     { key: "projet", label: "Projet" },
     { key: "tache", label: "Tâche" },
+    { key: "sousTache", label: "Sous-tâche" },
     { key: "cat", label: "Catégorie" },
     { key: "temps", label: "Temps (j)", num: true },
     { key: "nbJours", label: "Jours actifs", num: true },
@@ -1096,13 +1135,14 @@ function drawTable() {
       el("td", {}, r.intervenant),
       el("td", {}, r.projet),
       el("td", {}, r.tache),
+      el("td", {}, r.sousTache || "—"),
       el("td", {}, el("span", { class: "catdot", style: { background: catColor[r.cat] } }), CAT[r.cat].label),
       el("td", { class: "num" }, fmt(r.temps)),
       el("td", { class: "num" }, String(r.nbJours))));
   }
   const tfoot = el("tr", {},
     el("td", { style: { fontWeight: "600" } }, "Total"),
-    el("td"), el("td"), el("td"),
+    el("td"), el("td"), el("td"), el("td"),
     el("td", { class: "num", style: { fontWeight: "600" } }, fmt(total)),
     el("td"));
   wrap.appendChild(el("table", { class: "data" }, el("thead", {}, thead), tbody, el("tfoot", {}, tfoot)));
@@ -1110,9 +1150,9 @@ function drawTable() {
 $("#tblSearch").addEventListener("input", drawTable);
 $("#btnExport").addEventListener("click", () => {
   const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
-  const lines = ["Intervenant;Projet;Tâche;Catégorie;Temps (j);Jours actifs"];
+  const lines = ["Intervenant;Projet;Tâche;Sous-tâche;Catégorie;Temps (j);Jours actifs"];
   for (const r of tableRowsCache) {
-    lines.push([esc(r.intervenant), esc(r.projet), esc(r.tache), CAT[r.cat].label, String(r.temps.toFixed(4)).replace(".", ","), r.nbJours].join(";"));
+    lines.push([esc(r.intervenant), esc(r.projet), esc(r.tache), esc(r.sousTache), CAT[r.cat].label, String(r.temps.toFixed(4)).replace(".", ","), r.nbJours].join(";"));
   }
   const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
   const a = document.createElement("a");
