@@ -338,6 +338,12 @@
       <div id="chartIntervenants"></div>
     </div>
 
+    <div class="card">
+      <h3>Productivité par intervenant</h3>
+      <p class="desc">Part du temps travaillé (hors congés) passée sur des tâches productives — l'échelle va jusqu'à 100 %.</p>
+      <div id="chartProductivite"></div>
+    </div>
+
     <div class="grid2">
       <div class="card">
         <h3>Tâches non-productives — total équipe</h3>
@@ -635,10 +641,10 @@ function sumBy(data, keyFn, valFn) {
 }
 
 /* Horizontal bars, one series. items: [{name, value, extraTT}] */
-function renderBars(container, items, color, unitFmt, ttTitle) {
+function renderBars(container, items, color, unitFmt, ttTitle, maxOverride) {
   container.textContent = "";
   if (!items.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
-  const max = Math.max(...items.map((i) => i.value));
+  const max = maxOverride || Math.max(...items.map((i) => i.value));
   for (const it of items) {
     const w = max > 0 ? Math.max(it.value / max * 84, 0.5) : 0;
     const seg = el("div", {
@@ -901,6 +907,7 @@ function render() {
     el("div", { class: "value" }, value),
     sub ? el("div", { class: "sub" }, sub) : null);
   kpis.appendChild(tile("Total saisi", fmtJ(totalAll), `${nInterv} intervenant${nInterv > 1 ? "s" : ""}`));
+  kpis.appendChild(tile("Productivité équipe", pct(totals.prod, totalWork), "productif / temps travaillé (hors congés)", catColor.prod));
   kpis.appendChild(tile("Productif", fmtJ(totals.prod), pct(totals.prod, totalWork) + " du temps travaillé", catColor.prod));
   kpis.appendChild(tile("Non-productif (MAURITIUS9)", fmtJ(totals.np), pct(totals.np, totalWork) + " du temps travaillé", catColor.np));
   kpis.appendChild(tile("Congés (ZZZ_NPR)", fmtJ(totals.conge), pct(totals.conge, totalAll) + " du total saisi", catColor.conge));
@@ -918,6 +925,19 @@ function render() {
     total: t.prod + t.np + t.conge,
   })).sort((a, b) => b.total - a.total);
   renderStackedBars($("#chartIntervenants"), intervItems, fmtJ);
+
+  /* ---- productivité par intervenant (% du temps travaillé) ---- */
+  const prodItems = [...byInterv.entries()]
+    .filter(([, t]) => t.prod + t.np > 0)
+    .map(([name, t]) => {
+      const worked = t.prod + t.np;
+      return {
+        name, value: t.prod / worked * 100,
+        extraTT: `Productif ${fmtJ(t.prod)} · Non-productif ${fmtJ(t.np)} · Travaillé ${fmtJ(worked)}`,
+      };
+    })
+    .sort((a, b) => b.value - a.value);
+  renderBars($("#chartProductivite"), prodItems, catColor.prod, (v) => fmt(v, 1) + " %", "Productivité", 100);
 
   /* ---- NP tasks ---- */
   const npData = data.filter((r) => r.cat === "np");
@@ -1019,6 +1039,7 @@ function renderReport(data, totals, catColor) {
     sub ? el("div", { class: "sub" }, sub) : null);
   const nInterv = new Set(data.map((r) => r.intervenant)).size;
   rk.appendChild(kpi("Total saisi", fmtJ(totalAll), `${nInterv} intervenant${nInterv > 1 ? "s" : ""}`));
+  rk.appendChild(kpi("Productivité équipe", pct(totals.prod, totalWork), "productif / temps travaillé", catColor.prod));
   rk.appendChild(kpi("Productif", fmtJ(totals.prod), pct(totals.prod, totalWork) + " du temps travaillé", catColor.prod));
   rk.appendChild(kpi("Non-productif", fmtJ(totals.np), pct(totals.np, totalWork) + " du temps travaillé", catColor.np));
   rk.appendChild(kpi("Congés", fmtJ(totals.conge), pct(totals.conge, totalAll) + " du total saisi", catColor.conge));
@@ -1038,9 +1059,10 @@ function renderReport(data, totals, catColor) {
     el("h3", {}, "Répartition par intervenant"),
     rTable(
       [{ label: "Intervenant" }, { label: "Productif (j)", num: true }, { label: "Non-productif (j)", num: true },
-       { label: "Congés (j)", num: true }, { label: "Total (j)", num: true }, { label: "% non-productif*", num: true }],
-      intervRows.map((r) => [r.name, fmt(r.prod), fmt(r.np), fmt(r.conge), fmt(r.total), pct(r.np, r.prod + r.np)]),
-      ["Total", fmt(totals.prod), fmt(totals.np), fmt(totals.conge), fmt(totalAll), pct(totals.np, totalWork)]),
+       { label: "Congés (j)", num: true }, { label: "Total (j)", num: true },
+       { label: "Productivité*", num: true }, { label: "% non-productif*", num: true }],
+      intervRows.map((r) => [r.name, fmt(r.prod), fmt(r.np), fmt(r.conge), fmt(r.total), pct(r.prod, r.prod + r.np), pct(r.np, r.prod + r.np)]),
+      ["Total", fmt(totals.prod), fmt(totals.np), fmt(totals.conge), fmt(totalAll), pct(totals.prod, totalWork), pct(totals.np, totalWork)]),
     el("p", { class: "rmeta" }, "* part du temps travaillé (hors congés).")));
 
   /* non-productif par tâche */
