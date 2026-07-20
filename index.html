@@ -1,0 +1,936 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Timorc — Analyse des temps</title>
+<style>
+  :root {
+    color-scheme: light;
+    --surface-1: #fcfcfb;
+    --page: #f9f9f7;
+    --text-primary: #0b0b0b;
+    --text-secondary: #52514e;
+    --text-muted: #898781;
+    --grid: #e1e0d9;
+    --baseline: #c3c2b7;
+    --border: rgba(11,11,11,0.10);
+    --cat-prod: #2a78d6;
+    --cat-np: #eda100;
+    --cat-conge: #e87ba4;
+    --seq: #2a78d6;
+    --slot-1: #2a78d6;
+    --slot-2: #008300;
+    --slot-3: #e87ba4;
+    --slot-4: #eda100;
+    --slot-5: #1baf7a;
+    --slot-6: #eb6834;
+    --slot-7: #4a3aa7;
+    --slot-8: #e34948;
+    --other: #b5b3ab;
+    --accent: #2a78d6;
+    --tooltip-bg: #1f1f1e;
+    --tooltip-ink: #ffffff;
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --surface-1: #1a1a19;
+    --page: #0d0d0d;
+    --text-primary: #ffffff;
+    --text-secondary: #c3c2b7;
+    --text-muted: #898781;
+    --grid: #2c2c2a;
+    --baseline: #383835;
+    --border: rgba(255,255,255,0.10);
+    --cat-prod: #3987e5;
+    --cat-np: #c98500;
+    --cat-conge: #d55181;
+    --seq: #3987e5;
+    --slot-1: #3987e5;
+    --slot-2: #008300;
+    --slot-3: #d55181;
+    --slot-4: #c98500;
+    --slot-5: #199e70;
+    --slot-6: #d95926;
+    --slot-7: #9085e9;
+    --slot-8: #e66767;
+    --other: #5a5952;
+    --accent: #3987e5;
+    --tooltip-bg: #f2f1ee;
+    --tooltip-ink: #0b0b0b;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --surface-1: #1a1a19;
+      --page: #0d0d0d;
+      --text-primary: #ffffff;
+      --text-secondary: #c3c2b7;
+      --text-muted: #898781;
+      --grid: #2c2c2a;
+      --baseline: #383835;
+      --border: rgba(255,255,255,0.10);
+      --cat-prod: #3987e5;
+      --cat-np: #c98500;
+      --cat-conge: #d55181;
+      --seq: #3987e5;
+      --slot-1: #3987e5;
+      --slot-2: #008300;
+      --slot-3: #d55181;
+      --slot-4: #c98500;
+      --slot-5: #199e70;
+      --slot-6: #d95926;
+      --slot-7: #9085e9;
+      --slot-8: #e66767;
+      --other: #5a5952;
+      --accent: #3987e5;
+      --tooltip-bg: #f2f1ee;
+      --tooltip-ink: #0b0b0b;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--page);
+    color: var(--text-primary);
+    font: 14px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 20px 20px 64px; }
+
+  header.top { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-bottom: 4px; }
+  header.top h1 { font-size: 20px; font-weight: 650; margin: 0; }
+  .privacy {
+    font-size: 12px; color: var(--text-secondary);
+    border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
+    background: var(--surface-1);
+  }
+  .spacer { flex: 1; }
+  .btn {
+    appearance: none; border: 1px solid var(--border); background: var(--surface-1);
+    color: var(--text-primary); border-radius: 8px; padding: 6px 12px; font: inherit;
+    cursor: pointer;
+  }
+  .btn:hover { border-color: var(--baseline); }
+  .subtitle { color: var(--text-secondary); margin: 0 0 20px; font-size: 13px; }
+
+  /* ---------- landing / dropzone ---------- */
+  .dropzone {
+    border: 2px dashed var(--baseline); border-radius: 14px; background: var(--surface-1);
+    padding: 56px 24px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s;
+  }
+  .dropzone.dragover { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 6%, var(--surface-1)); }
+  .dropzone h2 { margin: 0 0 6px; font-size: 17px; font-weight: 600; }
+  .dropzone p { margin: 4px 0; color: var(--text-secondary); font-size: 13px; }
+  .dropzone .hint { color: var(--text-muted); font-size: 12px; }
+  .file-meta { font-size: 12px; color: var(--text-muted); }
+
+  /* ---------- filters ---------- */
+  .filters {
+    display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap;
+    margin: 18px 0 16px;
+  }
+  .filter { display: flex; flex-direction: column; gap: 4px; }
+  .filter label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; letter-spacing: .04em; }
+  .filter input[type="date"] {
+    border: 1px solid var(--border); background: var(--surface-1); color: var(--text-primary);
+    border-radius: 8px; padding: 6px 8px; font: inherit;
+  }
+  .msel { position: relative; }
+  .msel > button {
+    min-width: 170px; text-align: left; display: flex; justify-content: space-between; gap: 8px;
+    appearance: none; border: 1px solid var(--border); background: var(--surface-1);
+    color: var(--text-primary); border-radius: 8px; padding: 6px 10px; font: inherit; cursor: pointer;
+  }
+  .msel > button .caret { color: var(--text-muted); }
+  .msel .panel {
+    position: absolute; z-index: 30; top: calc(100% + 4px); left: 0; min-width: 260px; max-height: 320px;
+    overflow: auto; background: var(--surface-1); border: 1px solid var(--border); border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0,0,0,.14); padding: 6px; display: none;
+  }
+  .msel.open .panel { display: block; }
+  .msel .panel .tools { display: flex; gap: 6px; padding: 4px 6px 8px; border-bottom: 1px solid var(--grid); margin-bottom: 4px; }
+  .msel .panel .tools button { font-size: 12px; padding: 2px 8px; }
+  .msel .opt {
+    display: flex; align-items: center; gap: 8px; padding: 5px 8px; border-radius: 6px; cursor: pointer;
+    font-size: 13px;
+  }
+  .msel .opt:hover { background: color-mix(in srgb, var(--text-primary) 5%, transparent); }
+  .msel .opt input { accent-color: var(--accent); }
+
+  /* ---------- KPI tiles ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px; padding: 14px 16px;
+  }
+  .tile .label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .tile .swatch { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+  .tile .value { font-size: 26px; font-weight: 600; margin-top: 2px; }
+  .tile .sub { font-size: 12px; color: var(--text-muted); }
+
+  /* ---------- cards / charts ---------- */
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 900px) { .grid2 { grid-template-columns: 1fr; } }
+  .card {
+    background: var(--surface-1); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px 18px; margin-bottom: 14px; min-width: 0;
+  }
+  .card h3 { margin: 0 0 2px; font-size: 14px; font-weight: 650; }
+  .card .desc { margin: 0 0 12px; font-size: 12px; color: var(--text-muted); }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; margin: 0 0 10px; font-size: 12px; color: var(--text-secondary); }
+  .legend .key { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .key i { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
+
+  .hbar-row { display: grid; grid-template-columns: 190px 1fr; gap: 10px; align-items: center; margin: 0 0 8px; }
+  @media (max-width: 640px) { .hbar-row { grid-template-columns: 120px 1fr; } }
+  .hbar-row .name { font-size: 12.5px; color: var(--text-secondary); text-align: right; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbar-track { display: flex; align-items: center; min-height: 20px; }
+  .hbar-seg {
+    height: 16px; margin-right: 2px; border-radius: 0; cursor: default;
+    transition: filter .1s;
+  }
+  .hbar-seg:last-of-type, .hbar-seg.endcap { border-radius: 0 4px 4px 0; margin-right: 0; }
+  .hbar-seg:hover, .hbar-seg:focus-visible { filter: brightness(1.12); outline: none; }
+  .hbar-val { font-size: 12px; color: var(--text-secondary); margin-left: 8px; white-space: nowrap; font-variant-numeric: tabular-nums; }
+
+  .empty-note { color: var(--text-muted); font-size: 13px; padding: 12px 0; }
+
+  /* ---------- line chart ---------- */
+  .linechart-wrap { position: relative; }
+  .linechart-wrap svg { display: block; width: 100%; height: auto; }
+
+  /* ---------- table ---------- */
+  .tablebar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .tablebar input[type="search"] {
+    border: 1px solid var(--border); background: var(--page); color: var(--text-primary);
+    border-radius: 8px; padding: 6px 10px; font: inherit; min-width: 220px;
+  }
+  .tbl-scroll { overflow-x: auto; }
+  table.data { border-collapse: collapse; width: 100%; font-size: 13px; }
+  table.data th, table.data td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--grid); }
+  table.data th { color: var(--text-muted); font-weight: 600; font-size: 12px; cursor: pointer; user-select: none; white-space: nowrap; position: sticky; top: 0; background: var(--surface-1); }
+  table.data td.num, table.data th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  table.data td .catdot { width: 9px; height: 9px; border-radius: 3px; display: inline-block; margin-right: 6px; }
+  table.data tr:hover td { background: color-mix(in srgb, var(--text-primary) 3%, transparent); }
+
+  /* ---------- tooltip ---------- */
+  #tooltip {
+    position: fixed; z-index: 100; pointer-events: none; display: none;
+    background: var(--tooltip-bg); color: var(--tooltip-ink);
+    border-radius: 8px; padding: 8px 10px; font-size: 12px; max-width: 320px;
+    box-shadow: 0 6px 18px rgba(0,0,0,.22);
+  }
+  #tooltip .tt-title { font-weight: 600; margin-bottom: 4px; }
+  #tooltip .tt-row { display: flex; align-items: center; gap: 7px; margin: 2px 0; }
+  #tooltip .tt-row .k { width: 12px; height: 3px; border-radius: 2px; display: inline-block; flex: none; }
+  #tooltip .tt-row .v { font-weight: 650; margin-left: auto; padding-left: 12px; font-variant-numeric: tabular-nums; }
+
+  footer { color: var(--text-muted); font-size: 12px; margin-top: 26px; }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <h1>Timorc — Analyse des temps</h1>
+    <span class="privacy" title="Le fichier est lu localement dans votre navigateur. Rien n'est envoyé sur un serveur, rien n'est enregistré.">🔒 Aucune donnée stockée ni transmise</span>
+    <span class="spacer"></span>
+    <button class="btn" id="btnTheme" title="Basculer clair / sombre">🌓 Thème</button>
+    <button class="btn hidden" id="btnReset">Réinitialiser les filtres</button>
+    <button class="btn hidden" id="btnNewFile">Charger un autre fichier</button>
+  </header>
+  <p class="subtitle">Export « Temps passé par personne » (CSV) · les temps sous <strong>MAURITIUS9</strong> sont classés <strong>non-productifs</strong> · <strong>ZZZ_NPR – PAS DE PRESTATION</strong> = congés.</p>
+
+  <!-- Landing -->
+  <div id="landing">
+    <div class="dropzone" id="dropzone" tabindex="0" role="button" aria-label="Charger un fichier CSV">
+      <h2>Déposez votre fichier CSV Timorc ici</h2>
+      <p>ou cliquez pour le sélectionner</p>
+      <p class="hint">Format attendu : export « Temps passé par personne » (séparateur « ; », encodage Windows‑1252 ou UTF‑8).<br>
+      Le fichier est analysé uniquement dans votre navigateur — il n'est ni stocké, ni transmis.</p>
+      <input type="file" id="fileInput" accept=".csv,text/csv" class="hidden">
+    </div>
+  </div>
+
+  <!-- Dashboard -->
+  <div id="dash" class="hidden">
+    <div class="filters" id="filters">
+      <div class="filter">
+        <label for="dateFrom">Du</label>
+        <input type="date" id="dateFrom">
+      </div>
+      <div class="filter">
+        <label for="dateTo">Au</label>
+        <input type="date" id="dateTo">
+      </div>
+      <div class="filter">
+        <label>Intervenant</label>
+        <div class="msel" id="selIntervenant"></div>
+      </div>
+      <div class="filter">
+        <label>Projet</label>
+        <div class="msel" id="selProjet"></div>
+      </div>
+      <div class="filter">
+        <label>Catégorie</label>
+        <div class="msel" id="selCategorie"></div>
+      </div>
+      <div class="filter">
+        <label>&nbsp;</label>
+        <span class="file-meta" id="fileMeta"></span>
+      </div>
+    </div>
+
+    <div class="kpis" id="kpis"></div>
+
+    <div class="card">
+      <h3>Répartition du temps par intervenant</h3>
+      <p class="desc">Jours saisis par catégorie, triés du plus chargé au moins chargé.</p>
+      <div class="legend" id="legCat"></div>
+      <div id="chartIntervenants"></div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Tâches non-productives — total équipe</h3>
+        <p class="desc">Temps MAURITIUS9 par tâche : quelle tâche non-productive consomme le plus ?</p>
+        <div id="chartNpTasks"></div>
+      </div>
+      <div class="card">
+        <h3>Non-productif par intervenant, détaillé par tâche</h3>
+        <p class="desc">Qui passe du temps sur quelles tâches MAURITIUS9.</p>
+        <div class="legend" id="legNp"></div>
+        <div id="chartNpByPerson"></div>
+      </div>
+    </div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Temps par projet</h3>
+        <p class="desc">Jours saisis par projet (hors congés), les plus importants d'abord.</p>
+        <div id="chartProjects"></div>
+      </div>
+      <div class="card">
+        <h3>Congés par intervenant</h3>
+        <p class="desc">Jours saisis sous ZZZ_NPR – PAS DE PRESTATION.</p>
+        <div id="chartConges"></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>Évolution journalière</h3>
+      <p class="desc">Total des jours saisis par jour, par catégorie.</p>
+      <div class="legend" id="legDaily"></div>
+      <div class="linechart-wrap" id="chartDaily"></div>
+    </div>
+
+    <div class="card">
+      <h3>Détail (tableau)</h3>
+      <p class="desc">Agrégat intervenant × projet × tâche sur la période filtrée. Cliquez un en-tête pour trier.</p>
+      <div class="tablebar">
+        <input type="search" id="tblSearch" placeholder="Rechercher…">
+        <button class="btn" id="btnExport">Exporter le tableau (CSV)</button>
+      </div>
+      <div class="tbl-scroll" id="tableWrap"></div>
+    </div>
+
+    <footer>Les données restent dans cet onglet : rechargez la page et tout disparaît. Unité : jours (1,00 = une journée).</footer>
+  </div>
+</div>
+
+<div id="tooltip" role="status"></div>
+
+<script>
+"use strict";
+
+/* ============================== state ============================== */
+const CAT = {
+  prod:  { label: "Productif",     cssVar: "--cat-prod"  },
+  np:    { label: "Non-productif", cssVar: "--cat-np"    },
+  conge: { label: "Congé",         cssVar: "--cat-conge" },
+};
+const CAT_ORDER = ["prod", "np", "conge"];
+const SLOT_VARS = ["--slot-1","--slot-2","--slot-3","--slot-4","--slot-5","--slot-6","--slot-7","--slot-8"];
+
+let rows = [];            // parsed detail rows
+let fileName = "";
+let filters = { from: null, to: null, intervenants: null, projets: null, categories: null }; // null = all
+let sortState = { key: "temps", dir: -1 };
+
+/* ============================== utils ============================== */
+const $ = (sel) => document.querySelector(sel);
+function el(tag, attrs, ...children) {
+  const isSvg = ["svg","path","line","circle","rect","g","text","polyline"].includes(tag);
+  const n = isSvg ? document.createElementNS("http://www.w3.org/2000/svg", tag) : document.createElement(tag);
+  if (attrs) for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") { if (isSvg) n.setAttribute("class", v); else n.className = v; }
+    else if (k === "style" && typeof v === "object") Object.assign(n.style, v);
+    else if (k.startsWith("on") && typeof v === "function") n.addEventListener(k.slice(2), v);
+    else n.setAttribute(k, v);
+  }
+  for (const c of children) {
+    if (c == null) continue;
+    n.appendChild(typeof c === "string" ? document.createTextNode(c) : c);
+  }
+  return n;
+}
+const fmt = (v, d = 2) => v.toLocaleString("fr-FR", { minimumFractionDigits: 0, maximumFractionDigits: d });
+const fmtJ = (v) => fmt(v) + " j";
+const pct = (v, total) => total > 0 ? fmt(v / total * 100, 1) + " %" : "—";
+const cssColor = (varName) => getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+const normalize = (s) => s.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim();
+const dateKey = (d) => d.toISOString().slice(0, 10);
+const fmtDate = (d) => d.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit", year: "numeric" });
+
+/* ============================== CSV parsing ============================== */
+function decodeBuffer(buf) {
+  try { return new TextDecoder("utf-8", { fatal: true }).decode(buf); }
+  catch { return new TextDecoder("windows-1252").decode(buf); }
+}
+function parseCsv(text, sep) {
+  const out = [];
+  let row = [], field = "", inQ = false;
+  for (let i = 0; i < text.length; i++) {
+    const ch = text[i];
+    if (inQ) {
+      if (ch === '"') {
+        if (text[i + 1] === '"') { field += '"'; i++; }
+        else inQ = false;
+      } else field += ch;
+    } else if (ch === '"') inQ = true;
+    else if (ch === sep) { row.push(field); field = ""; }
+    else if (ch === "\n" || ch === "\r") {
+      if (ch === "\r" && text[i + 1] === "\n") i++;
+      row.push(field); field = "";
+      if (row.length > 1 || row[0] !== "") out.push(row);
+      row = [];
+    } else field += ch;
+  }
+  row.push(field);
+  if (row.length > 1 || row[0] !== "") out.push(row);
+  return out;
+}
+function parseDate(s) {
+  const m = /^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/.exec(s.trim());
+  if (!m) return null;
+  let y = +m[3]; if (y < 100) y += 2000;
+  const d = new Date(Date.UTC(y, +m[2] - 1, +m[1]));
+  return isNaN(d) ? null : d;
+}
+function parseNum(s) {
+  if (!s) return NaN;
+  return parseFloat(s.replace(/\s/g, "").replace(",", "."));
+}
+function classify(projet) {
+  const p = projet.toUpperCase();
+  if (p.startsWith("MAURITIUS9")) return "np";
+  if (p.startsWith("ZZZ_NPR")) return "conge";
+  return "prod";
+}
+function loadFile(file) {
+  file.arrayBuffer().then((buf) => {
+    const text = decodeBuffer(buf);
+    const firstLine = text.slice(0, text.indexOf("\n"));
+    const sep = (firstLine.split(";").length >= firstLine.split(",").length) ? ";" : ",";
+    const table = parseCsv(text, sep);
+    if (!table.length) { alert("Fichier vide ou illisible."); return; }
+
+    const header = table[0].map(normalize);
+    const findCol = (pred) => header.findIndex(pred);
+    const iProjet = findCol((h) => h.startsWith("projet"));
+    const iInterv = findCol((h) => h.startsWith("intervenant"));
+    const iTache  = findCol((h) => h.startsWith("tache") || h === "tâche");
+    const iJour   = findCol((h) => h === "jour");
+    const iTemps  = findCol((h) => h.startsWith("temps passe") && !h.includes("cumul"));
+    const iPresta = findCol((h) => h.startsWith("prestation"));
+    const iPres   = findCol((h) => h.includes("presence"));
+    const iComm   = findCol((h) => h.startsWith("commentaire"));
+    if (iProjet < 0 || iInterv < 0 || iJour < 0 || iTemps < 0) {
+      alert("Colonnes attendues introuvables (Projet, Intervenant, Jour, Temps passé). Vérifiez que le fichier est bien l'export « Temps passé par personne ».");
+      return;
+    }
+
+    const parsed = [];
+    for (let r = 1; r < table.length; r++) {
+      const c = table[r];
+      const jour = (c[iJour] || "").trim();
+      const temps = parseNum(c[iTemps]);
+      if (!jour || isNaN(temps)) continue; // sous-totaux et lignes vides
+      const date = parseDate(jour);
+      if (!date) continue;
+      const projet = (c[iProjet] || "").trim();
+      const intervenant = (c[iInterv] || "").trim() || "(non renseigné)";
+      const tache = (iTache >= 0 ? c[iTache] || "" : "").trim() || "(sans tâche)";
+      parsed.push({
+        projet, intervenant, tache, date, temps,
+        prestation: (iPresta >= 0 ? c[iPresta] || "" : "").trim(),
+        presence: iPres >= 0 ? parseNum(c[iPres]) : NaN,
+        commentaire: (iComm >= 0 ? c[iComm] || "" : "").trim(),
+        cat: classify(projet),
+      });
+    }
+    if (!parsed.length) {
+      alert("Aucune ligne détaillée (avec Jour + Temps passé) trouvée dans ce fichier.");
+      return;
+    }
+    rows = parsed;
+    fileName = file.name;
+    initDashboard();
+  });
+}
+
+/* ============================== filters ============================== */
+function uniqueSorted(arr) { return [...new Set(arr)].sort((a, b) => a.localeCompare(b, "fr")); }
+
+function buildMultiSelect(container, options, labels, onChange) {
+  container.textContent = "";
+  const state = { selected: new Set(options) };
+  const btnLabel = document.createElement("span");
+  const btn = el("button", { type: "button" }, btnLabel, el("span", { class: "caret" }, "▾"));
+  const panel = el("div", { class: "panel" });
+  panel.addEventListener("click", (e) => e.stopPropagation());
+  const tools = el("div", { class: "tools" },
+    el("button", { class: "btn", type: "button", onclick: () => { state.selected = new Set(options); sync(); onChange(current()); } }, "Tout"),
+    el("button", { class: "btn", type: "button", onclick: () => { state.selected.clear(); sync(); onChange(current()); } }, "Aucun"),
+  );
+  panel.appendChild(tools);
+  const boxes = new Map();
+  for (const opt of options) {
+    const cb = el("input", { type: "checkbox" });
+    cb.checked = true;
+    cb.addEventListener("change", () => {
+      cb.checked ? state.selected.add(opt) : state.selected.delete(opt);
+      sync(); onChange(current());
+    });
+    boxes.set(opt, cb);
+    const lab = el("label", { class: "opt" }, cb, (labels && labels[opt]) || opt);
+    panel.appendChild(lab);
+  }
+  function current() { return state.selected.size === options.length ? null : new Set(state.selected); }
+  function sync() {
+    for (const [opt, cb] of boxes) cb.checked = state.selected.has(opt);
+    btnLabel.textContent =
+      state.selected.size === options.length ? "Tous" :
+      state.selected.size === 0 ? "Aucun" :
+      state.selected.size === 1 ? ((labels && labels[[...state.selected][0]]) || [...state.selected][0]) :
+      state.selected.size + " sélectionnés";
+  }
+  btn.addEventListener("click", (e) => { e.stopPropagation(); closeAllMsel(container); container.classList.toggle("open"); });
+  container.appendChild(btn);
+  container.appendChild(panel);
+  container._reset = () => { state.selected = new Set(options); sync(); };
+  sync();
+}
+function closeAllMsel(except) {
+  document.querySelectorAll(".msel.open").forEach((m) => { if (m !== except) m.classList.remove("open"); });
+}
+document.addEventListener("click", () => closeAllMsel());
+
+function filteredRows() {
+  return rows.filter((r) =>
+    (!filters.from || r.date >= filters.from) &&
+    (!filters.to || r.date <= filters.to) &&
+    (!filters.intervenants || filters.intervenants.has(r.intervenant)) &&
+    (!filters.projets || filters.projets.has(r.projet)) &&
+    (!filters.categories || filters.categories.has(r.cat))
+  );
+}
+
+/* ============================== tooltip ============================== */
+const tooltip = $("#tooltip");
+function showTooltip(evt, build) {
+  tooltip.textContent = "";
+  build(tooltip);
+  tooltip.style.display = "block";
+  moveTooltip(evt);
+}
+function moveTooltip(evt) {
+  const pad = 14;
+  const r = tooltip.getBoundingClientRect();
+  let x = evt.clientX + pad, y = evt.clientY + pad;
+  if (x + r.width > window.innerWidth - 8) x = evt.clientX - r.width - pad;
+  if (y + r.height > window.innerHeight - 8) y = evt.clientY - r.height - pad;
+  tooltip.style.left = x + "px";
+  tooltip.style.top = y + "px";
+}
+function hideTooltip() { tooltip.style.display = "none"; }
+function ttRow(color, label, value) {
+  return el("div", { class: "tt-row" },
+    el("span", { class: "k", style: { background: color } }),
+    el("span", {}, label),
+    el("span", { class: "v" }, value));
+}
+
+/* ============================== charts ============================== */
+function sumBy(data, keyFn, valFn) {
+  const m = new Map();
+  for (const r of data) {
+    const k = keyFn(r);
+    m.set(k, (m.get(k) || 0) + valFn(r));
+  }
+  return m;
+}
+
+/* Horizontal bars, one series. items: [{name, value, extraTT}] */
+function renderBars(container, items, color, unitFmt, ttTitle) {
+  container.textContent = "";
+  if (!items.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
+  const max = Math.max(...items.map((i) => i.value));
+  for (const it of items) {
+    const w = max > 0 ? Math.max(it.value / max * 84, 0.5) : 0;
+    const seg = el("div", {
+      class: "hbar-seg endcap", tabindex: "0",
+      style: { width: w + "%", background: color, flex: "none" },
+    });
+    const tt = (e) => showTooltip(e, (t) => {
+      t.appendChild(el("div", { class: "tt-title" }, it.name));
+      t.appendChild(ttRow(color, ttTitle || "Temps", unitFmt(it.value)));
+      if (it.extraTT) t.appendChild(el("div", { style: { color: "inherit", opacity: .75, marginTop: "3px" } }, it.extraTT));
+    });
+    seg.addEventListener("pointermove", tt);
+    seg.addEventListener("pointerleave", hideTooltip);
+    seg.addEventListener("focus", (e) => tt({ clientX: seg.getBoundingClientRect().right, clientY: seg.getBoundingClientRect().top }));
+    seg.addEventListener("blur", hideTooltip);
+    container.appendChild(el("div", { class: "hbar-row" },
+      el("div", { class: "name", title: it.name }, it.name),
+      el("div", { class: "hbar-track" }, seg, el("span", { class: "hbar-val" }, unitFmt(it.value)))));
+  }
+}
+
+/* Stacked horizontal bars. items: [{name, parts: [{key,label,value,color}], total}] */
+function renderStackedBars(container, items, unitFmt) {
+  container.textContent = "";
+  if (!items.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
+  const max = Math.max(...items.map((i) => i.total));
+  for (const it of items) {
+    const track = el("div", { class: "hbar-track" });
+    const visible = it.parts.filter((p) => p.value > 0);
+    visible.forEach((p, idx) => {
+      const w = max > 0 ? p.value / max * 84 : 0;
+      const seg = el("div", {
+        class: "hbar-seg" + (idx === visible.length - 1 ? " endcap" : ""), tabindex: "0",
+        style: { width: w + "%", background: p.color, flex: "none" },
+      });
+      const tt = (e) => showTooltip(e, (t) => {
+        t.appendChild(el("div", { class: "tt-title" }, it.name));
+        for (const q of visible) t.appendChild(ttRow(q.color, q.label, unitFmt(q.value)));
+        t.appendChild(ttRow("transparent", "Total", unitFmt(it.total)));
+      });
+      seg.addEventListener("pointermove", tt);
+      seg.addEventListener("pointerleave", hideTooltip);
+      seg.addEventListener("focus", () => tt({ clientX: seg.getBoundingClientRect().right, clientY: seg.getBoundingClientRect().top }));
+      seg.addEventListener("blur", hideTooltip);
+      track.appendChild(seg);
+    });
+    track.appendChild(el("span", { class: "hbar-val" }, unitFmt(it.total)));
+    container.appendChild(el("div", { class: "hbar-row" },
+      el("div", { class: "name", title: it.name }, it.name), track));
+  }
+}
+
+function renderLegend(container, entries) {
+  container.textContent = "";
+  for (const e2 of entries) {
+    container.appendChild(el("span", { class: "key" }, el("i", { style: { background: e2.color } }), e2.label));
+  }
+}
+
+/* Daily multi-series line chart with crosshair tooltip. series: [{key,label,color, byDay:Map}] */
+function renderDaily(container, days, series) {
+  container.textContent = "";
+  if (!days.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
+  const W = 1080, H = 260, mL = 44, mR = 16, mT = 12, mB = 34;
+  const iw = W - mL - mR, ih = H - mT - mB;
+  const maxY = Math.max(0.001, ...series.flatMap((s) => days.map((d) => s.byDay.get(d) || 0)));
+  const niceMax = niceCeil(maxY);
+  const x = (i) => mL + (days.length === 1 ? iw / 2 : i / (days.length - 1) * iw);
+  const y = (v) => mT + ih - v / niceMax * ih;
+
+  const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Évolution journalière" });
+  // gridlines + y ticks
+  const ticks = 4;
+  for (let t = 0; t <= ticks; t++) {
+    const v = niceMax * t / ticks, yy = y(v);
+    svg.appendChild(el("line", { x1: mL, x2: W - mR, y1: yy, y2: yy, stroke: cssColor(t === 0 ? "--baseline" : "--grid"), "stroke-width": 1 }));
+    svg.appendChild(el("text", { x: mL - 8, y: yy + 4, "text-anchor": "end", "font-size": 11, fill: cssColor("--text-muted") }, fmt(v, 1)));
+  }
+  // x labels (sparse)
+  const step = Math.max(1, Math.ceil(days.length / 12));
+  days.forEach((d, i) => {
+    if (i % step !== 0 && i !== days.length - 1) return;
+    const dd = new Date(d);
+    svg.appendChild(el("text", { x: x(i), y: H - 10, "text-anchor": "middle", "font-size": 11, fill: cssColor("--text-muted") },
+      dd.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" })));
+  });
+  // series lines + end markers
+  for (const s of series) {
+    const pts = days.map((d, i) => `${x(i)},${y(s.byDay.get(d) || 0)}`).join(" ");
+    svg.appendChild(el("polyline", { points: pts, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+    const li = days.length - 1;
+    svg.appendChild(el("circle", { cx: x(li), cy: y(s.byDay.get(days[li]) || 0), r: 4, fill: s.color, stroke: cssColor("--surface-1"), "stroke-width": 2 }));
+  }
+  // crosshair
+  const cross = el("line", { y1: mT, y2: mT + ih, stroke: cssColor("--baseline"), "stroke-width": 1, visibility: "hidden" });
+  svg.appendChild(cross);
+  const hit = el("rect", { x: mL, y: mT, width: iw, height: ih, fill: "transparent" });
+  hit.addEventListener("pointermove", (e) => {
+    const r = svg.getBoundingClientRect();
+    const px = (e.clientX - r.left) / r.width * W;
+    let idx = days.length === 1 ? 0 : Math.round((px - mL) / iw * (days.length - 1));
+    idx = Math.max(0, Math.min(days.length - 1, idx));
+    const cx = x(idx);
+    cross.setAttribute("x1", cx); cross.setAttribute("x2", cx);
+    cross.setAttribute("visibility", "visible");
+    const dd = new Date(days[idx]);
+    showTooltip(e, (t) => {
+      t.appendChild(el("div", { class: "tt-title" }, fmtDate(dd)));
+      let tot = 0;
+      for (const s of series) {
+        const v = s.byDay.get(days[idx]) || 0; tot += v;
+        t.appendChild(ttRow(s.color, s.label, fmtJ(v)));
+      }
+      t.appendChild(ttRow("transparent", "Total", fmtJ(tot)));
+    });
+  });
+  hit.addEventListener("pointerleave", () => { cross.setAttribute("visibility", "hidden"); hideTooltip(); });
+  svg.appendChild(hit);
+  container.appendChild(svg);
+}
+function niceCeil(v) {
+  const p = Math.pow(10, Math.floor(Math.log10(v)));
+  for (const m of [1, 1.5, 2, 2.5, 3, 4, 5, 6, 8, 10]) if (m * p >= v) return m * p;
+  return 10 * p;
+}
+
+/* ============================== dashboard ============================== */
+function initDashboard() {
+  $("#landing").classList.add("hidden");
+  $("#dash").classList.remove("hidden");
+  $("#btnReset").classList.remove("hidden");
+  $("#btnNewFile").classList.remove("hidden");
+
+  const dates = rows.map((r) => r.date);
+  const min = new Date(Math.min(...dates)), max = new Date(Math.max(...dates));
+  filters = { from: min, to: max, intervenants: null, projets: null, categories: null };
+  $("#dateFrom").value = dateKey(min);
+  $("#dateTo").value = dateKey(max);
+  $("#fileMeta").textContent = `${fileName} · ${fmt(rows.length, 0)} lignes · ${fmtDate(min)} → ${fmtDate(max)}`;
+
+  buildMultiSelect($("#selIntervenant"), uniqueSorted(rows.map((r) => r.intervenant)), null, (sel) => { filters.intervenants = sel; render(); });
+  buildMultiSelect($("#selProjet"), uniqueSorted(rows.map((r) => r.projet)), null, (sel) => { filters.projets = sel; render(); });
+  buildMultiSelect($("#selCategorie"), CAT_ORDER, Object.fromEntries(CAT_ORDER.map((c) => [c, CAT[c].label])), (sel) => { filters.categories = sel; render(); });
+
+  render();
+}
+
+$("#dateFrom").addEventListener("change", (e) => {
+  const d = e.target.value ? new Date(e.target.value + "T00:00:00Z") : null;
+  filters.from = d; render();
+});
+$("#dateTo").addEventListener("change", (e) => {
+  const d = e.target.value ? new Date(e.target.value + "T00:00:00Z") : null;
+  filters.to = d; render();
+});
+$("#btnReset").addEventListener("click", () => {
+  const dates = rows.map((r) => r.date);
+  const min = new Date(Math.min(...dates)), max = new Date(Math.max(...dates));
+  filters = { from: min, to: max, intervenants: null, projets: null, categories: null };
+  $("#dateFrom").value = dateKey(min);
+  $("#dateTo").value = dateKey(max);
+  document.querySelectorAll(".msel").forEach((m) => m._reset && m._reset());
+  render();
+});
+$("#btnNewFile").addEventListener("click", () => $("#fileInput").click());
+
+function render() {
+  const data = filteredRows();
+  const catColor = Object.fromEntries(CAT_ORDER.map((c) => [c, cssColor(CAT[c].cssVar)]));
+
+  /* ---- KPIs ---- */
+  const totals = { prod: 0, np: 0, conge: 0 };
+  for (const r of data) totals[r.cat] += r.temps;
+  const totalAll = totals.prod + totals.np + totals.conge;
+  const totalWork = totals.prod + totals.np; // hors congés
+  const nInterv = new Set(data.map((r) => r.intervenant)).size;
+  const kpis = $("#kpis");
+  kpis.textContent = "";
+  const tile = (label, value, sub, color) => el("div", { class: "tile" },
+    el("div", { class: "label" }, color ? el("span", { class: "swatch", style: { background: color } }) : null, label),
+    el("div", { class: "value" }, value),
+    sub ? el("div", { class: "sub" }, sub) : null);
+  kpis.appendChild(tile("Total saisi", fmtJ(totalAll), `${nInterv} intervenant${nInterv > 1 ? "s" : ""}`));
+  kpis.appendChild(tile("Productif", fmtJ(totals.prod), pct(totals.prod, totalWork) + " du temps travaillé", catColor.prod));
+  kpis.appendChild(tile("Non-productif (MAURITIUS9)", fmtJ(totals.np), pct(totals.np, totalWork) + " du temps travaillé", catColor.np));
+  kpis.appendChild(tile("Congés (ZZZ_NPR)", fmtJ(totals.conge), pct(totals.conge, totalAll) + " du total saisi", catColor.conge));
+
+  /* ---- stacked by intervenant ---- */
+  renderLegend($("#legCat"), CAT_ORDER.map((c) => ({ label: CAT[c].label, color: catColor[c] })));
+  const byInterv = new Map();
+  for (const r of data) {
+    if (!byInterv.has(r.intervenant)) byInterv.set(r.intervenant, { prod: 0, np: 0, conge: 0 });
+    byInterv.get(r.intervenant)[r.cat] += r.temps;
+  }
+  const intervItems = [...byInterv.entries()].map(([name, t]) => ({
+    name,
+    parts: CAT_ORDER.map((c) => ({ key: c, label: CAT[c].label, value: t[c], color: catColor[c] })),
+    total: t.prod + t.np + t.conge,
+  })).sort((a, b) => b.total - a.total);
+  renderStackedBars($("#chartIntervenants"), intervItems, fmtJ);
+
+  /* ---- NP tasks ---- */
+  const npData = data.filter((r) => r.cat === "np");
+  const npTaskTotals = [...sumBy(npData, (r) => r.tache, (r) => r.temps).entries()]
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  renderBars($("#chartNpTasks"), npTaskTotals, catColor.np, fmtJ, "Non-productif");
+
+  const npTaskNames = npTaskTotals.map((t) => t.name);
+  const shownTasks = npTaskNames.slice(0, 8);
+  const taskColor = new Map(shownTasks.map((t, i) => [t, cssColor(SLOT_VARS[i])]));
+  const otherColor = cssColor("--other");
+  renderLegend($("#legNp"), [
+    ...shownTasks.map((t) => ({ label: t, color: taskColor.get(t) })),
+    ...(npTaskNames.length > 8 ? [{ label: "Autres", color: otherColor }] : []),
+  ]);
+  const npByPerson = new Map();
+  for (const r of npData) {
+    if (!npByPerson.has(r.intervenant)) npByPerson.set(r.intervenant, new Map());
+    const m = npByPerson.get(r.intervenant);
+    const key = taskColor.has(r.tache) ? r.tache : "Autres";
+    m.set(key, (m.get(key) || 0) + r.temps);
+  }
+  const npPersonItems = [...npByPerson.entries()].map(([name, m]) => {
+    const parts = [...shownTasks, "Autres"]
+      .filter((t) => m.has(t))
+      .map((t) => ({ key: t, label: t, value: m.get(t), color: taskColor.get(t) || otherColor }));
+    return { name, parts, total: parts.reduce((s, p) => s + p.value, 0) };
+  }).sort((a, b) => b.total - a.total);
+  renderStackedBars($("#chartNpByPerson"), npPersonItems, fmtJ);
+
+  /* ---- projects (hors congés) ---- */
+  const projTotals = [...sumBy(data.filter((r) => r.cat !== "conge"), (r) => r.projet, (r) => r.temps).entries()]
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  const TOPN = 12;
+  const projItems = projTotals.slice(0, TOPN);
+  if (projTotals.length > TOPN) {
+    projItems.push({ name: `Autres (${projTotals.length - TOPN} projets)`, value: projTotals.slice(TOPN).reduce((s, p) => s + p.value, 0) });
+  }
+  renderBars($("#chartProjects"), projItems, cssColor("--seq"), fmtJ, "Temps");
+
+  /* ---- congés ---- */
+  const congeItems = [...sumBy(data.filter((r) => r.cat === "conge"), (r) => r.intervenant, (r) => r.temps).entries()]
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  renderBars($("#chartConges"), congeItems, catColor.conge, fmtJ, "Congés");
+
+  /* ---- daily ---- */
+  renderLegend($("#legDaily"), CAT_ORDER.map((c) => ({ label: CAT[c].label, color: catColor[c] })));
+  const dayKeys = uniqueSorted(data.map((r) => dateKey(r.date)));
+  const series = CAT_ORDER.map((c) => ({
+    key: c, label: CAT[c].label, color: catColor[c],
+    byDay: sumBy(data.filter((r) => r.cat === c), (r) => dateKey(r.date), (r) => r.temps),
+  }));
+  renderDaily($("#chartDaily"), dayKeys, series);
+
+  /* ---- table ---- */
+  renderTable(data);
+}
+
+/* ============================== table ============================== */
+let tableRowsCache = [];
+function renderTable(data) {
+  const agg = new Map();
+  for (const r of data) {
+    const key = r.intervenant + " " + r.projet + " " + r.tache;
+    if (!agg.has(key)) agg.set(key, { intervenant: r.intervenant, projet: r.projet, tache: r.tache, cat: r.cat, temps: 0, jours: new Set() });
+    const a = agg.get(key);
+    a.temps += r.temps;
+    a.jours.add(dateKey(r.date));
+  }
+  tableRowsCache = [...agg.values()].map((a) => ({ ...a, nbJours: a.jours.size }));
+  drawTable();
+}
+function drawTable() {
+  const q = normalize($("#tblSearch").value || "");
+  let list = tableRowsCache.filter((r) =>
+    !q || normalize(r.intervenant).includes(q) || normalize(r.projet).includes(q) || normalize(r.tache).includes(q));
+  const { key, dir } = sortState;
+  list.sort((a, b) => {
+    const va = a[key], vb = b[key];
+    return (typeof va === "number" ? va - vb : String(va).localeCompare(String(vb), "fr")) * dir;
+  });
+  const catColor = Object.fromEntries(CAT_ORDER.map((c) => [c, cssColor(CAT[c].cssVar)]));
+  const wrap = $("#tableWrap");
+  wrap.textContent = "";
+  const cols = [
+    { key: "intervenant", label: "Intervenant" },
+    { key: "projet", label: "Projet" },
+    { key: "tache", label: "Tâche" },
+    { key: "cat", label: "Catégorie" },
+    { key: "temps", label: "Temps (j)", num: true },
+    { key: "nbJours", label: "Jours actifs", num: true },
+  ];
+  const thead = el("tr");
+  for (const c of cols) {
+    const arrow = sortState.key === c.key ? (sortState.dir === 1 ? " ↑" : " ↓") : "";
+    thead.appendChild(el("th", {
+      class: c.num ? "num" : "",
+      onclick: () => {
+        sortState = { key: c.key, dir: sortState.key === c.key ? -sortState.dir : (c.num ? -1 : 1) };
+        drawTable();
+      },
+    }, c.label + arrow));
+  }
+  const tbody = el("tbody");
+  const total = list.reduce((s, r) => s + r.temps, 0);
+  for (const r of list) {
+    tbody.appendChild(el("tr", {},
+      el("td", {}, r.intervenant),
+      el("td", {}, r.projet),
+      el("td", {}, r.tache),
+      el("td", {}, el("span", { class: "catdot", style: { background: catColor[r.cat] } }), CAT[r.cat].label),
+      el("td", { class: "num" }, fmt(r.temps)),
+      el("td", { class: "num" }, String(r.nbJours))));
+  }
+  const tfoot = el("tr", {},
+    el("td", { style: { fontWeight: "600" } }, "Total"),
+    el("td"), el("td"), el("td"),
+    el("td", { class: "num", style: { fontWeight: "600" } }, fmt(total)),
+    el("td"));
+  wrap.appendChild(el("table", { class: "data" }, el("thead", {}, thead), tbody, el("tfoot", {}, tfoot)));
+}
+$("#tblSearch").addEventListener("input", drawTable);
+$("#btnExport").addEventListener("click", () => {
+  const esc = (s) => `"${String(s).replace(/"/g, '""')}"`;
+  const lines = ["Intervenant;Projet;Tâche;Catégorie;Temps (j);Jours actifs"];
+  for (const r of tableRowsCache) {
+    lines.push([esc(r.intervenant), esc(r.projet), esc(r.tache), CAT[r.cat].label, String(r.temps.toFixed(4)).replace(".", ","), r.nbJours].join(";"));
+  }
+  const blob = new Blob(["﻿" + lines.join("\r\n")], { type: "text/csv;charset=utf-8" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "timorc-analyse.csv";
+  a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ============================== file input & theme ============================== */
+const dz = $("#dropzone"), fi = $("#fileInput");
+dz.addEventListener("click", () => fi.click());
+dz.addEventListener("keydown", (e) => { if (e.key === "Enter" || e.key === " ") fi.click(); });
+dz.addEventListener("dragover", (e) => { e.preventDefault(); dz.classList.add("dragover"); });
+dz.addEventListener("dragleave", () => dz.classList.remove("dragover"));
+dz.addEventListener("drop", (e) => {
+  e.preventDefault(); dz.classList.remove("dragover");
+  if (e.dataTransfer.files.length) loadFile(e.dataTransfer.files[0]);
+});
+fi.addEventListener("change", () => { if (fi.files.length) { loadFile(fi.files[0]); fi.value = ""; } });
+document.addEventListener("dragover", (e) => e.preventDefault());
+document.addEventListener("drop", (e) => e.preventDefault());
+
+$("#btnTheme").addEventListener("click", () => {
+  const root = document.documentElement;
+  const dark = root.dataset.theme === "dark" || (!root.dataset.theme && matchMedia("(prefers-color-scheme: dark)").matches);
+  root.dataset.theme = dark ? "light" : "dark";
+  if (rows.length) render();
+});
+</script>
+</body>
+</html>
