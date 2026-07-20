@@ -226,6 +226,47 @@
 
   footer { color: var(--text-muted); font-size: 12px; margin-top: 26px; }
   .hidden { display: none !important; }
+
+  /* ---------- NP sub-task breakdown ---------- */
+  .np-person { display: flex; align-items: baseline; gap: 8px; margin: 12px 0 4px; }
+  .np-person:first-child { margin-top: 0; }
+  .np-person .who { font-size: 13px; font-weight: 650; }
+  .np-person .tot { font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .np-person .rule { flex: 1; border-bottom: 1px solid var(--grid); transform: translateY(-3px); }
+
+  /* ---------- tabs ---------- */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--grid); margin: 2px 0 16px; }
+  .tab {
+    appearance: none; background: none; border: none; border-bottom: 2px solid transparent;
+    color: var(--text-secondary); font: inherit; font-weight: 600; padding: 8px 14px; cursor: pointer;
+  }
+  .tab:hover { color: var(--text-primary); }
+  .tab.active { color: var(--text-primary); border-bottom-color: var(--accent); }
+
+  /* ---------- report ---------- */
+  .report h2 { font-size: 18px; margin: 0 0 2px; }
+  .report .rmeta { color: var(--text-secondary); font-size: 12.5px; margin: 0 0 4px; }
+  .report section.rsec { margin-top: 22px; }
+  .report section.rsec h3 { font-size: 14px; margin: 0 0 8px; border-bottom: 1px solid var(--grid); padding-bottom: 5px; }
+  .report table.data th { cursor: default; position: static; }
+  .report .rkpis { display: flex; gap: 28px; flex-wrap: wrap; margin: 14px 0 4px; }
+  .report .rkpi .label { font-size: 12px; color: var(--text-secondary); display: flex; align-items: center; gap: 6px; }
+  .report .rkpi .value { font-size: 21px; font-weight: 650; }
+  .report .rkpi .sub { font-size: 11.5px; color: var(--text-muted); }
+  .report .swatch, .report .catdot { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+  /* ---------- print: only the report ---------- */
+  @media print {
+    @page { margin: 13mm; }
+    body { background: #fff; }
+    header.top, .subtitle, .filters, .tabs, footer, .noprint, #viewDash { display: none !important; }
+    #viewReport { display: block !important; }
+    .wrap { max-width: none; padding: 0; }
+    .card.report { border: none; padding: 0; }
+    .report section.rsec { break-inside: avoid-page; }
+    .report table.data { font-size: 11.5px; }
+    .report table.data th, .report table.data td { padding: 4px 8px; }
+  }
 </style>
 </head>
 <body>
@@ -280,6 +321,12 @@
       </div>
     </div>
 
+    <div class="tabs" role="tablist">
+      <button class="tab active" role="tab" aria-selected="true" data-view="dash">Tableau de bord</button>
+      <button class="tab" role="tab" aria-selected="false" data-view="report">Rapports</button>
+    </div>
+
+    <div id="viewDash">
     <div class="kpis" id="kpis"></div>
 
     <div class="card">
@@ -296,9 +343,8 @@
         <div id="chartNpTasks"></div>
       </div>
       <div class="card">
-        <h3>Non-productif par intervenant, détaillé par tâche</h3>
-        <p class="desc">Qui passe du temps sur quelles tâches MAURITIUS9.</p>
-        <div class="legend" id="legNp"></div>
+        <h3>Non-productif par intervenant, détaillé par sous-tâche</h3>
+        <p class="desc">Qui passe du temps sur quoi — d'après le commentaire des saisies MAURITIUS9.</p>
         <div id="chartNpByPerson"></div>
       </div>
     </div>
@@ -332,6 +378,19 @@
       </div>
       <div class="tbl-scroll" id="tableWrap"></div>
     </div>
+    </div><!-- /viewDash -->
+
+    <div id="viewReport" class="hidden">
+      <div class="card noprint" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;">
+        <div>
+          <h3 style="margin:0;">Rapport d'analyse</h3>
+          <p class="desc" style="margin:0;">Le rapport reflète les filtres en cours. « Exporter en PDF » ouvre l'impression du navigateur : choisissez « Enregistrer au format PDF ».</p>
+        </div>
+        <span class="spacer"></span>
+        <button class="btn" id="btnPdf">🖨️ Exporter en PDF</button>
+      </div>
+      <div class="card report" id="reportBody"></div>
+    </div>
 
     <footer>Les données restent dans cet onglet : rechargez la page et tout disparaît. Unité : jours (1,00 = une journée).</footer>
   </div>
@@ -349,7 +408,6 @@ const CAT = {
   conge: { label: "Congé",         cssVar: "--cat-conge" },
 };
 const CAT_ORDER = ["prod", "np", "conge"];
-const SLOT_VARS = ["--slot-1","--slot-2","--slot-3","--slot-4","--slot-5","--slot-6","--slot-7","--slot-8"];
 
 let rows = [];            // parsed detail rows
 let fileName = "";
@@ -627,6 +685,59 @@ function renderStackedBars(container, items, unitFmt) {
   }
 }
 
+/* NP breakdown per person by sub-task (the free-text "Commentaire" of MAURITIUS9 entries) */
+function groupNpSubtasks(npData) {
+  const persons = new Map();
+  for (const r of npData) {
+    if (!persons.has(r.intervenant)) persons.set(r.intervenant, { total: 0, subs: new Map() });
+    const p = persons.get(r.intervenant);
+    p.total += r.temps;
+    const label = r.commentaire || "(sans détail)";
+    const key = normalize(label);
+    if (!p.subs.has(key)) p.subs.set(key, { label, value: 0, taches: new Set() });
+    const s = p.subs.get(key);
+    s.value += r.temps;
+    s.taches.add(r.tache);
+  }
+  return [...persons.entries()]
+    .map(([name, p]) => ({
+      name, total: p.total,
+      subs: [...p.subs.values()].sort((a, b) => b.value - a.value),
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+function renderNpSubtasks(container, npData, color) {
+  container.textContent = "";
+  const persons = groupNpSubtasks(npData);
+  if (!persons.length) { container.appendChild(el("div", { class: "empty-note" }, "Aucune donnée sur la période / les filtres choisis.")); return; }
+  const maxSub = Math.max(...persons.flatMap((p) => p.subs.map((s) => s.value)));
+  for (const p of persons) {
+    container.appendChild(el("div", { class: "np-person" },
+      el("span", { class: "who" }, p.name),
+      el("span", { class: "rule" }),
+      el("span", { class: "tot" }, fmtJ(p.total))));
+    for (const s of p.subs) {
+      const w = maxSub > 0 ? Math.max(s.value / maxSub * 84, 0.5) : 0;
+      const seg = el("div", {
+        class: "hbar-seg endcap", tabindex: "0",
+        style: { width: w + "%", background: color, flex: "none" },
+      });
+      const tt = (e) => showTooltip(e, (t) => {
+        t.appendChild(el("div", { class: "tt-title" }, s.label));
+        t.appendChild(ttRow(color, p.name, fmtJ(s.value)));
+        t.appendChild(el("div", { style: { opacity: .75, marginTop: "3px" } }, "Tâche : " + [...s.taches].join(", ")));
+      });
+      seg.addEventListener("pointermove", tt);
+      seg.addEventListener("pointerleave", hideTooltip);
+      seg.addEventListener("focus", () => tt({ clientX: seg.getBoundingClientRect().right, clientY: seg.getBoundingClientRect().top }));
+      seg.addEventListener("blur", hideTooltip);
+      container.appendChild(el("div", { class: "hbar-row" },
+        el("div", { class: "name", title: s.label }, s.label),
+        el("div", { class: "hbar-track" }, seg, el("span", { class: "hbar-val" }, fmtJ(s.value)))));
+    }
+  }
+}
+
 function renderLegend(container, entries) {
   container.textContent = "";
   for (const e2 of entries) {
@@ -782,28 +893,7 @@ function render() {
     .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
   renderBars($("#chartNpTasks"), npTaskTotals, catColor.np, fmtJ, "Non-productif");
 
-  const npTaskNames = npTaskTotals.map((t) => t.name);
-  const shownTasks = npTaskNames.slice(0, 8);
-  const taskColor = new Map(shownTasks.map((t, i) => [t, cssColor(SLOT_VARS[i])]));
-  const otherColor = cssColor("--other");
-  renderLegend($("#legNp"), [
-    ...shownTasks.map((t) => ({ label: t, color: taskColor.get(t) })),
-    ...(npTaskNames.length > 8 ? [{ label: "Autres", color: otherColor }] : []),
-  ]);
-  const npByPerson = new Map();
-  for (const r of npData) {
-    if (!npByPerson.has(r.intervenant)) npByPerson.set(r.intervenant, new Map());
-    const m = npByPerson.get(r.intervenant);
-    const key = taskColor.has(r.tache) ? r.tache : "Autres";
-    m.set(key, (m.get(key) || 0) + r.temps);
-  }
-  const npPersonItems = [...npByPerson.entries()].map(([name, m]) => {
-    const parts = [...shownTasks, "Autres"]
-      .filter((t) => m.has(t))
-      .map((t) => ({ key: t, label: t, value: m.get(t), color: taskColor.get(t) || otherColor }));
-    return { name, parts, total: parts.reduce((s, p) => s + p.value, 0) };
-  }).sort((a, b) => b.total - a.total);
-  renderStackedBars($("#chartNpByPerson"), npPersonItems, fmtJ);
+  renderNpSubtasks($("#chartNpByPerson"), npData, catColor.np);
 
   /* ---- projects (hors congés) ---- */
   const projTotals = [...sumBy(data.filter((r) => r.cat !== "conge"), (r) => r.projet, (r) => r.temps).entries()]
@@ -831,6 +921,127 @@ function render() {
 
   /* ---- table ---- */
   renderTable(data);
+
+  /* ---- report (kept in sync so l'impression reflète toujours les filtres) ---- */
+  renderReport(data, totals, catColor);
+}
+
+/* ============================== report ============================== */
+function filterSummary() {
+  const parts = [];
+  parts.push(`Période : ${filters.from ? fmtDate(filters.from) : "—"} → ${filters.to ? fmtDate(filters.to) : "—"}`);
+  parts.push("Intervenants : " + (filters.intervenants ? [...filters.intervenants].sort((a, b) => a.localeCompare(b, "fr")).join(", ") : "tous"));
+  parts.push("Projets : " + (filters.projets ? [...filters.projets].sort((a, b) => a.localeCompare(b, "fr")).join(", ") : "tous"));
+  parts.push("Catégories : " + (filters.categories ? [...filters.categories].map((c) => CAT[c].label).join(", ") : "toutes"));
+  return parts;
+}
+function rTable(headers, rowsData, footRow) {
+  const thead = el("tr");
+  for (const h of headers) thead.appendChild(el("th", { class: h.num ? "num" : "" }, h.label));
+  const tbody = el("tbody");
+  for (const cells of rowsData) {
+    const tr = el("tr");
+    cells.forEach((c, i) => tr.appendChild(
+      c instanceof Node ? el("td", { class: headers[i].num ? "num" : "" }, c)
+                        : el("td", { class: headers[i].num ? "num" : "" }, String(c))));
+    tbody.appendChild(tr);
+  }
+  const t = el("table", { class: "data" }, el("thead", {}, thead), tbody);
+  if (footRow) {
+    const tr = el("tr");
+    footRow.forEach((c, i) => tr.appendChild(el("td", { class: (headers[i] && headers[i].num ? "num " : "") + "b", style: { fontWeight: "600" } }, String(c))));
+    t.appendChild(el("tfoot", {}, tr));
+  }
+  return t;
+}
+function catCell(cat, catColor) {
+  return el("span", {}, el("span", { class: "catdot", style: { background: catColor[cat] } }), CAT[cat].label);
+}
+function renderReport(data, totals, catColor) {
+  const body = $("#reportBody");
+  body.textContent = "";
+  const totalAll = totals.prod + totals.np + totals.conge;
+  const totalWork = totals.prod + totals.np;
+
+  body.appendChild(el("h2", {}, "Rapport d'analyse des temps — Timorc"));
+  body.appendChild(el("p", { class: "rmeta" }, `Fichier : ${fileName} · généré le ${fmtDate(new Date())}`));
+  for (const line of filterSummary()) body.appendChild(el("p", { class: "rmeta" }, line));
+
+  /* synthèse */
+  const syn = el("section", { class: "rsec" }, el("h3", {}, "Synthèse"));
+  const rk = el("div", { class: "rkpis" });
+  const kpi = (label, value, sub, color) => el("div", { class: "rkpi" },
+    el("div", { class: "label" }, color ? el("span", { class: "swatch", style: { background: color, width: "10px", height: "10px", borderRadius: "3px", display: "inline-block" } }) : null, label),
+    el("div", { class: "value" }, value),
+    sub ? el("div", { class: "sub" }, sub) : null);
+  const nInterv = new Set(data.map((r) => r.intervenant)).size;
+  rk.appendChild(kpi("Total saisi", fmtJ(totalAll), `${nInterv} intervenant${nInterv > 1 ? "s" : ""}`));
+  rk.appendChild(kpi("Productif", fmtJ(totals.prod), pct(totals.prod, totalWork) + " du temps travaillé", catColor.prod));
+  rk.appendChild(kpi("Non-productif", fmtJ(totals.np), pct(totals.np, totalWork) + " du temps travaillé", catColor.np));
+  rk.appendChild(kpi("Congés", fmtJ(totals.conge), pct(totals.conge, totalAll) + " du total saisi", catColor.conge));
+  syn.appendChild(rk);
+  body.appendChild(syn);
+
+  /* par intervenant */
+  const byInterv = new Map();
+  for (const r of data) {
+    if (!byInterv.has(r.intervenant)) byInterv.set(r.intervenant, { prod: 0, np: 0, conge: 0 });
+    byInterv.get(r.intervenant)[r.cat] += r.temps;
+  }
+  const intervRows = [...byInterv.entries()]
+    .map(([name, t]) => ({ name, ...t, total: t.prod + t.np + t.conge }))
+    .sort((a, b) => b.total - a.total);
+  body.appendChild(el("section", { class: "rsec" },
+    el("h3", {}, "Répartition par intervenant"),
+    rTable(
+      [{ label: "Intervenant" }, { label: "Productif (j)", num: true }, { label: "Non-productif (j)", num: true },
+       { label: "Congés (j)", num: true }, { label: "Total (j)", num: true }, { label: "% non-productif*", num: true }],
+      intervRows.map((r) => [r.name, fmt(r.prod), fmt(r.np), fmt(r.conge), fmt(r.total), pct(r.np, r.prod + r.np)]),
+      ["Total", fmt(totals.prod), fmt(totals.np), fmt(totals.conge), fmt(totalAll), pct(totals.np, totalWork)]),
+    el("p", { class: "rmeta" }, "* part du temps travaillé (hors congés).")));
+
+  /* non-productif par tâche */
+  const npData = data.filter((r) => r.cat === "np");
+  const npTasks = [...sumBy(npData, (r) => r.tache, (r) => r.temps).entries()]
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  body.appendChild(el("section", { class: "rsec" },
+    el("h3", {}, "Tâches non-productives (MAURITIUS9) — total équipe"),
+    npTasks.length ? rTable(
+      [{ label: "Tâche" }, { label: "Temps (j)", num: true }, { label: "Part", num: true }],
+      npTasks.map((t) => [t.name, fmt(t.value), pct(t.value, totals.np)]),
+      ["Total", fmt(totals.np), ""]) : el("p", { class: "rmeta" }, "Aucune donnée.")));
+
+  /* non-productif par intervenant et sous-tâche */
+  const npDetail = [];
+  for (const p of groupNpSubtasks(npData)) {
+    for (const s of p.subs) npDetail.push([p.name, s.label, [...s.taches].join(", "), fmt(s.value)]);
+  }
+  body.appendChild(el("section", { class: "rsec" },
+    el("h3", {}, "Non-productif par intervenant, détaillé par sous-tâche"),
+    npDetail.length ? rTable(
+      [{ label: "Intervenant" }, { label: "Sous-tâche (commentaire)" }, { label: "Tâche" }, { label: "Temps (j)", num: true }],
+      npDetail,
+      ["Total", "", "", fmt(totals.np)]) : el("p", { class: "rmeta" }, "Aucune donnée.")));
+
+  /* congés */
+  const conges = [...sumBy(data.filter((r) => r.cat === "conge"), (r) => r.intervenant, (r) => r.temps).entries()]
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  body.appendChild(el("section", { class: "rsec" },
+    el("h3", {}, "Congés (ZZZ_NPR) par intervenant"),
+    conges.length ? rTable(
+      [{ label: "Intervenant" }, { label: "Jours", num: true }],
+      conges.map((c) => [c.name, fmt(c.value)]),
+      ["Total", fmt(totals.conge)]) : el("p", { class: "rmeta" }, "Aucune donnée.")));
+
+  /* projets */
+  const projs = [...sumBy(data.filter((r) => r.cat !== "conge"), (r) => r.projet, (r) => r.temps).entries()]
+    .map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+  body.appendChild(el("section", { class: "rsec" },
+    el("h3", {}, "Temps par projet (hors congés)"),
+    projs.length ? rTable(
+      [{ label: "Projet" }, { label: "Temps (j)", num: true }, { label: "Part", num: true }],
+      projs.map((p) => [p.name, fmt(p.value), pct(p.value, totalWork)]),
+      ["Total", fmt(totalWork), ""]) : el("p", { class: "rmeta" }, "Aucune donnée.")));
 }
 
 /* ============================== table ============================== */
@@ -924,6 +1135,30 @@ dz.addEventListener("drop", (e) => {
 fi.addEventListener("change", () => { if (fi.files.length) { loadFile(fi.files[0]); fi.value = ""; } });
 document.addEventListener("dragover", (e) => e.preventDefault());
 document.addEventListener("drop", (e) => e.preventDefault());
+
+/* ---------- tabs ---------- */
+document.querySelectorAll(".tab").forEach((btn) => btn.addEventListener("click", () => {
+  document.querySelectorAll(".tab").forEach((b) => {
+    const active = b === btn;
+    b.classList.toggle("active", active);
+    b.setAttribute("aria-selected", String(active));
+  });
+  $("#viewDash").classList.toggle("hidden", btn.dataset.view !== "dash");
+  $("#viewReport").classList.toggle("hidden", btn.dataset.view !== "report");
+}));
+
+/* ---------- PDF export (impression navigateur, forcée en thème clair) ---------- */
+let themeBeforePrint = null;
+window.addEventListener("beforeprint", () => {
+  themeBeforePrint = document.documentElement.dataset.theme || "";
+  document.documentElement.dataset.theme = "light";
+});
+window.addEventListener("afterprint", () => {
+  if (themeBeforePrint === "") delete document.documentElement.dataset.theme;
+  else document.documentElement.dataset.theme = themeBeforePrint;
+  themeBeforePrint = null;
+});
+$("#btnPdf").addEventListener("click", () => window.print());
 
 $("#btnTheme").addEventListener("click", () => {
   const root = document.documentElement;
